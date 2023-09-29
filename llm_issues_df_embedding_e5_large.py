@@ -20,7 +20,7 @@ class JapaneseCharacterTextSplitter(RecursiveCharacterTextSplitter):
         super().__init__(separators=separators, **kwargs)
 
 # load
-df = pd.read_csv("./data/readmine_db.csv", encoding='utf-8', quoting=csv.QUOTE_NONNUMERIC, escapechar='\\')
+df = pd.read_csv("./data/redmine_db.csv", encoding='utf-8', quoting=csv.QUOTE_NONNUMERIC, escapechar='\\')
 df.head()
 
 loader = DataFrameLoader(df, page_content_column="journals")
