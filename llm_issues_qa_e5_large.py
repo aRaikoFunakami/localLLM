@@ -10,13 +10,16 @@ from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain import PromptTemplate
 from langchain.chains import LLMChain
 from langchain.chat_models.openai import ChatOpenAI
+from collections import defaultdict
+from urllib.parse import quote
 
 # ベクトルストアの初期化
 embeddings = HuggingFaceEmbeddings(model_name="intfloat/multilingual-e5-large")
 vectorstore = Chroma(persist_directory="./chroma_issues_512", embedding_function=embeddings)
 
 # Question
-user_query = "Chromium起動時のメモリ消費改善の方法をしりたい"
+# user_query = "Chromium起動時のメモリ消費改善の方法をしりたい"
+user_query = "新規メンバー向けの情報"
 
 
 # クエリの自動生成
@@ -36,7 +39,7 @@ llm = LlamaCpp(
 
 import config
 config.load()
-#llm = ChatOpenAI(model_name="gpt-3.5-turbo",temperature=0, callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]), streaming=True,)
+llm = ChatOpenAI(model_name="gpt-3.5-turbo",temperature=0, callback_manager=CallbackManager([StreamingStdOutCallbackHandler()]), streaming=True,)
 #llm = ChatOpenAI(model_name="gpt-4",temperature=0)
 
 prompt_template = """
@@ -80,18 +83,57 @@ class LineListOutputParser(PydanticOutputParser):
 output_parser = LineListOutputParser()
 
 # for MultiQueryRetriver with own prompt
-chain = LLMChain(llm=llm, prompt=prompt, output_parser=output_parser)
+#chain = LLMChain(llm=llm, prompt=prompt, output_parser=output_parser)
 
 # MultiQueryRetriever
 from langchain.retrievers.multi_query import MultiQueryRetriever
-retriver = MultiQueryRetriever(retriever=vectorstore.as_retriever(), llm_chain=chain, parser_key="lines")
+#retriever = MultiQueryRetriever(retriever=vectorstore.as_retriever(), llm_chain=chain, parser_key="lines")
 
-retriver = MultiQueryRetriever.from_llm(retriever=vectorstore.as_retriever(), llm=llm)
+retriever = MultiQueryRetriever.from_llm(retriever=vectorstore.as_retriever(), llm=llm)
 
 # search
-docs = retriver.get_relevant_documents(user_query)
+#docs = retriever.get_relevant_documents(user_query)
 
-print(docs)
+
+def group_docs_by_id(docs):
+    grouped = defaultdict(list)
+    for doc in docs:
+        id_key = doc.metadata["id"]
+        grouped[id_key].append(doc)
+    return grouped
+
+def create_markdown_table(grouped_docs):
+    response = "\n\n"
+    response += "| ID | Subject | Content |\n"
+    response += "|    -: |    :-: |   :-  |\n"
+
+    # issue list information
+
+    for id, docs in grouped_docs.items():
+        subject = docs[0].metadata["subject"]  # 仮定：すべての同じIDのドキュメントは同じsubjectを持つ
+
+        if isinstance(id, float):  # id が浮動小数点数の場合
+            id = int(id)  # 小数部分を切り捨てて整数に変換
+            url = f"https://gate.tok.access-company.com/redmine/issues/{id}"
+        else:  # id が文字列の場合
+            url = f"https://gate.tok.access-company.com/redmine/projects/{id}/wiki/{quote(subject)}"
+        
+        for i, doc in enumerate(docs):
+            content = f"{doc.page_content}"
+            response += f"| [{id}]({url}) | {subject} | {content} |\n"
+        
+    response += "\n"
+        
+    return response
+
+# 主処理
+docs = retriever.get_relevant_documents(user_query)
+# docs += retriever.get_relevant_documents(user_message)  # 2回同じ関数を呼び出していますが、実際の実装に応じて調整してください。
+
+grouped_docs = group_docs_by_id(docs)
+response = create_markdown_table(grouped_docs)
+
+print (response)
 
 # searched list
 """
